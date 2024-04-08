@@ -1,0 +1,659 @@
+---
+title: "Replication Study: The Duration of Unemployment"
+author: "Josue Velasco"
+date: "2024-03-07"
+output: html_document
+---
+
+I will replicate some results documented in:
+
+Lalive, R. van Ours, J. and J. Zweimuller (2006), “How Changes in Financial Incentives Affect the Duration of Unemployment.” The Review of Economic Studies, 73, 4, 1009-1038.
+
+# 1. Research objectives
+
+This study focuses on a groundbreaking exploration: the intricate relationship between adjustments to financial support for unemployed individuals and the duration of their unemployment. The investigation meticulously dissects a pivotal period in Austria's history – the late 1980s, a time marked by significant reforms to the nation's unemployment insurance system. This research gains relevance in light of the widespread transformations to unemployment benefits that have swept across Europe in recent years.
+
+**Theoretical Framework: Optimizing Job Search Under Unemployment Benefits**
+
+The study is informed by a theoretical framework that sheds light on the relationship between unemployment benefit parameters and job search behavior. This framework centers on the concept of optimal search intensity, which considers the expected costs and benefits associated with being unemployed versus being employed. Factors such as the level of unemployment benefits, search costs incurred during job hunting, prevailing labor market conditions, the likelihood of finding a job, and the risk of exhausting benefits before securing employment all play a crucial role in this optimization problem.
+
+According to the theory, optimal search intensity involves striking a balance between the marginal costs and benefits of searching for a job. Initially, when unemployment begins, search intensity tends to be low. This is because the probability of finding a job before benefits expire is relatively high. However, as the duration of unemployment lengthens, the risk of benefit exhaustion increases. This prompts unemployed individuals to increase their job search efforts, intensifying their search activities. Once benefits are exhausted, search intensity stabilizes as individuals confront a more predictable environment. In this phase, the rate at which they exit unemployment becomes primarily dependent on search costs, the level of any remaining unemployment assistance, and prevailing labor market conditions.
+
+The theory further explores into the impact of changes in the earnings replacement rate (RR) on job search behavior. A higher RR translates to a lower cost of being unemployed, particularly at the outset. This initially leads to a reduction in search intensity. However, as benefit expiration draws closer, the potential loss of more generous benefits incentivizes individuals to intensify their job search efforts. This results in a surge in search intensity that even surpasses the level observed with lower RR. This phenomenon, termed the "entitlement effect," underscores the heightened value of securing a new job due to the mitigated financial consequences of job loss associated with a higher RR.
+
+**Empirical Analysis: The Austrian Case Study**
+
+The authors leverage a natural experiment in Austria to isolate the causal effects of specific policy changes on unemployment durations. The experiment involved variations in unemployment benefit parameters for distinct groups of unemployed individuals:
+
+* **Group 1:** Received a better deal on their benefits (increased RR).
+* **Group 2:** Could get benefits for longer (extended PBD).
+* **Group 3:** Got both the better deal and the longer benefits.
+* **Group 4:** The control group – nothing changed for them with their benefits.
+
+By meticulously comparing these groups' responses to the policy changes, the study sheds light on the intricate relationship between financial incentives and job search behavior.
+
+**Impact of RR and PBD on Unemployment Exit Hazard and Job Search Behavior**
+
+The excerpt explains how changes in the replacement rate (RR) and potential benefit duration (PBD) impact the unemployment exit hazard and job search behavior over the duration of unemployment. Here's a breakdown of the key points:
+
+1. **Results:**
+   
+    - Group 1 (RR Increase): Individuals experiencing an isolated increase in the earnings replacement rate by about 15% showed a corresponding increase in unemployment duration.
+    
+    - Group 2 (PBD Extension): The impact of extending PBD from 30 to 39 weeks resulted in a relatively small increase in unemployment duration. However, extending PBD from 30 to 52 weeks led to a much larger increase in unemployment duration.
+    
+    - Combined Effects: The joint increase in RR and PBD had varying effects. For the extension from 30 to 39 weeks, the impact was slightly larger than the sum of individual changes. In contrast, the joint increase from 30 to 52 weeks had a significantly larger effect than the sum of individual changes.
+
+    - Group 4: Did not experience relevant changes.
+    
+3. **Empirical Implications:**
+
+In general, the study showed that increasing in RR and extensions in PBD are expected to result in longer unemployment durations. The strength of behavioral responses will vary depending on the specific changes in benefits and the stage of unemployment like the individual characteristics such as age, proximity to retirement, and eligibility for early retirement benefits. Additionally, labor market positions and institutional settings can also play a role. 
+
+**Policy Implications**
+
+By incorporating this theoretical framework alongside their empirical analysis, the authors provide a comprehensive understanding of the complex dynamics between unemployment benefit parameters and job search behavior. This combined approach offers valuable insights for policymakers who are striving to design unemployment benefit programs that effectively balance the need for social support with the goal of facilitating re-employment and reducing unemployment durations. 
+
+The study highlights that changes in RR and PBD can significantly influence unemployment exit patterns. While extensions in PBD may not have a strong initial impact, they become more influential as unemployment progresses. The "entitlement effect" associated with higher RR can lead to surges in search intensity near benefit expiration. Additionally, the study suggests that the combined effect of increasing both RR and PBD can have a magnified disincentive on job search, particularly towards the end of the benefit period.
+
+These findings underscore the importance of considering the relationship between benefit parameters and individual behavior when designing unemployment insurance systems. Policymakers can leverage this knowledge to create programs that provide adequate support while also encouraging active job search efforts, ultimately promoting faster re-employment and a healthier labor market. 
+
+# 2 Background
+
+The authors seek to identify the causal effect of benefit duration on the willingness of individuals to accept jobs using a policy change that took place in Austria in 1989.
+
+The policy affected various unemployed workers differently, as mentioned before: a first group experienced an increase in RR (replacement rate); a second group experienced an extension of PBD (potential benefit duration); a third group experienced both changes; and a fourth group experienced no change (the control group).
+
+The potential benefit duration was increased, depending on age and experience: For workers younger than 40 and who had little previous work experience, the potential benefit duration remained unchanged. For workers with high levels of previous work experience, the duration has increased.
+
+# 3. Load and prepare the data
+
+The data are provided in the data set fi.dta. This file, which contains 225,821 unemployment spells, is quite large (150 MB) as it also contains the interaction terms used in the PH model estimation.
+
+```{r, warning=FALSE}
+#load libraries to be used
+library(foreign)
+library(tidyverse)
+library(survival)
+
+data = read.dta('path/fi.dta')
+data <- data[,1:134] # get rid of some superfluous variables
+data = as_tibble(data)
+
+dim(data)
+
+```
+```{r}
+glimpse(data[,1:36])
+```
+
+
+Examining the groups defined for the study
+
+```{r}
+table(data$type)
+
+```
+Dealing with right censored data at 104 weeks: 
+$$t_{u}^{104}=min(t_{u},104)$$
+To do this, we create a new column in the data frame.
+
+```{r}
+#Compute average spells for durations bigger than 104 weeks (right-censored at 104 weeks)
+
+data %>%
+  mutate(dur104 = dur,
+         dur104 = ifelse(dur104 > 104,104, dur104)) -> data
+```
+
+
+## Description of variables
+
+The variable $uncc$ refers to the exit indicator. While the variable $after$, which is a binary variable, refers to the period after the policy change.
+
+The RDD design is as follows:
+
+*Previously (before August 1st, 1989):*
+
+- Unemployment benefits (PBD: Potential Benefit Duration) lasted 20 weeks for everyone.
+- The RR (replacement rate) was around 41%.
+
+*Changes implemented after August 1st, 1989:*
+
+- RR increased to around 47%.
+- The duration of unemployment benefits (PBD) became dependent on two factors:
+
+  °Previous contributions (as it was before)
+  
+  °Age at the beginning of unemployment:
+    * For individuals aged 40-49, the benefit duration increased to 39 weeks (if they had been employed within the past 10 years).
+    * For individuals aged 50 and over, the benefit duration increased to a maximum of 52 weeks.
+    
+The variables and interaction terms are described as follows:
+
+| Variable Name | Description |
+|---------------|-------------|
+| dur           | Duration of unemployment spell (weeks) |
+| bdur          | Potential benefit duration (weeks) |
+| uncc          | =1 if spell not censored |
+| tr            | =1 if replacement rate change |
+| t39           | =1 if PBD 30-39 change |
+| t52           | =1 if PBD 30-52 change |
+| t39_tr        | t39 * tr |
+| t52_tr        | t52 * tr |
+| tr_a0         | tr * after0 |
+| t39_a0        | t39 * after0 |
+| t52_a0        | t52 * after0 |
+| t39tra0       | t39 * tr * after0 |
+| t52tra0       | t52 * tr * after0 |
+| after         | =1 if spell starts after Aug 1, 1989 |
+| after0        | = 1 if interval 0 after Aug 1, 1989 |
+
+# 4. Difference-in-Differences
+
+\[
+\Delta_{DD} = (\bar{Y}_{A}^{-T} - \bar{Y}_{B}^{-T}) - (\bar{Y}_{A}^{-C} - \bar{Y}_{B}^{-C})
+\]
+
+$\bar{Y}_{B}^{-T}$ and $\bar{Y}_{A}^{-T}$ are the average duration of unemployment for the treated group before and after the implementation of the policy.
+
+$\bar{Y}_{A}^{-C}$ and $\bar{Y}_{B}^{-C}$ refer to the average duration of unemployment for the control group (before and after the policy).
+
+```{r}
+# Filter observations for Period after Aug 1, 1989)
+period_after = data %>%
+  filter(dur104 <= 104)%>% # focus on data less than or equal to 104 weeks
+  filter(after==1)
+
+#Filter observations for Period before Aug 1, 1989)
+period_before = data %>%
+  filter(dur104 <= 104)%>%
+  filter(after==0)
+```
+
+```{r, warning=FALSE}
+library(dplyr)
+library(plotrix)
+
+# Define a function to calculate mean, number of observations (n), and standard deviation (sd)
+calculate_stats = function(data, groups, values) {
+  result = data %>%
+    group_by({{groups}}, after) %>%
+    summarise(
+      m = mean({{values}}),
+      N = n(),
+      se = std.error({{values}})
+    ) %>%
+    mutate(
+      group = ifelse(after == 1, paste({{groups}}, "after", sep = " "), paste({{groups}}, "before", sep = " "))
+    ) %>%
+    select(-after)
+  return(result)
+}
+
+# Filter only 'PBD' and 'RR' from the 'type' column
+period_before_filtered = period_before %>%
+  filter(type %in% c('PBD', 'RR'))
+
+period_after_filtered = period_after %>%
+  filter(type %in% c('PBD', 'RR'))
+
+# Calculate statistics for 'PBD' and 'RR' before and after
+group_stats_before = calculate_stats(period_before_filtered, groups = type, values = dur104)
+group_stats_after = calculate_stats(period_after_filtered, groups = type, values = dur104)
+
+# Combine the results
+combined_stats = bind_rows(group_stats_before, group_stats_after)
+
+# Print the result
+print(combined_stats)
+
+```
+
+By doing this, we get the means, standard error and number of observations for the groups RR and PBD.
+
+We can replicate the same for all 4 groups (PDB, RR, PBD & RR and Control, both for before and after the implementation of the policy).
+
+```{r, warning=FALSE, message=FALSE}
+
+# Calculate statistics for 'PBD' and 'RR' before and after
+group_stats_before = calculate_stats(period_before, groups = type, values = dur104)
+group_stats_after = calculate_stats(period_after, groups = type, values = dur104)
+
+# Combine the results
+combined_stats = bind_rows(group_stats_before, group_stats_after)
+
+# Print the result
+print(combined_stats)
+
+```
+
+
+
+Now, we can calculate the difference-in-difference for each group and get the following results: 
+```{r, message=FALSE, warning=FALSE}
+library(dplyr)
+library(tidyr)
+library(kableExtra)
+library(knitr)
+
+# Define a function to calculate mean, number of observations (n), and standard deviation (sd)
+calculate_stats_long = function(data, values) {
+  result = data %>%
+    group_by(type, after) %>%
+    summarise(
+      m = mean({{values}}),
+      N = n(),
+      se = std.error({{values}})
+    ) 
+  return(result)
+}
+
+# Calculate statistics for all 'type' values before and after
+group_stats_before_long = calculate_stats_long(period_before, values = dur104)
+group_stats_after_long = calculate_stats_long(period_after, values = dur104)
+
+# Combine the results
+combined_stats = bind_rows(group_stats_before_long, group_stats_after_long)
+
+# Pivot to long format
+combined_stats_long = combined_stats %>%
+  pivot_longer(cols = c(m, N, se), names_to = "name", values_to = "value")%>%pivot_wider(names_from = after, values_from = value)
+
+# Calculate differences and DiD
+control_diff = combined_stats_long %>%
+  filter(type == "control") %>%
+  mutate(diff = `1` - `0`) %>%
+  pull()
+
+combined_stats_long = combined_stats_long %>%
+  mutate(diff = ifelse(name == "m", round(`1` - `0`, 2), NA),
+         DiD = ifelse(name == "m", 
+                      round(`1` - `0` - control_diff, 2),
+                      NA))
+# Print the result
+print(combined_stats_long)
+
+```
+
+As reported by the original study, we can show too in this implementation that the duration of unemployment is bigger for the PBD & RR group, while the control group has the shortest one (both for before and after the implementation of the policy). The difference before and after the implementation show that unemployment duration increased in all four groups but this change is stronger within the groups unlike the control group (as showed by the DiD).
+
+If we apply a regression, we get similar results:
+
+```{r}
+
+# Fit separate linear regression models for each type
+mod1 = lm(dur104 ~ type-1, data = period_after)
+mod2 = lm(dur104 ~ type-1, data = period_before)
+
+
+
+```
+
+After the policy:
+```{r}
+# Extract coefficients
+mod1
+
+```
+
+Before the policy:
+```{r}
+mod2
+```
+
+
+# 5. Survival Function
+
+Now, I calculate and plot the Kaplan-Meier estimates (survival function); one for each group type.
+
+```{r}
+period_pbd = data %>%
+  filter(dur104 <= 104)%>%
+  filter(type=="PBD")
+
+fit_pbd = survfit(Surv(period_pbd$dur104, period_pbd$uncc)~period_pbd$after)
+
+plot(fit_pbd, col = c("blue", "red"), lwd = 2, main = "Survival Curves -PBD")
+legend("topright", legend = c("before","after"), col = c("blue", "red"), lwd = 2)
+```
+
+We get the same results as the original study in which for this group, after 15 weeks of unemployment, the survivor function after the policy change (red line), diverges from the survivor function before the policy (blue line), up to the 40th week.
+
+```{r}
+period_rr = data %>%
+  filter(dur104 <= 104)%>%
+  filter(type=="RR")
+
+fit_rr = survfit(Surv(period_rr$dur104, period_rr$uncc)~period_rr$after)
+
+plot(fit_rr, col = c("blue", "red"), lwd = 2, main = "Survival Curves -RR")
+legend("topright", legend = c("before","after"), col = c("blue", "red"), lwd = 2)
+```
+
+Unlike the previous graph, the RR group, there is a slight increase in the survivor function from the start of the spell for the red line (after the implementation of the policy), even after the week 30 in which the benefits have been exhausted.
+
+```{r}
+period_pbd_rr = data %>%
+  filter(dur104 <= 104)%>%
+  filter(type=="PBD and RR")
+
+fit_pbd_rr = survfit(Surv(period_pbd_rr$dur104, period_pbd_rr$uncc)~period_pbd_rr$after)
+
+plot(fit_pbd_rr, col = c("blue", "red"), lwd = 2, main = "Survival Curves -PBD and RR")
+legend("topright", legend = c("before","after"), col = c("blue", "red"), lwd = 2)
+
+```
+
+As for the PDB & RR group, there is a strong increase in the survivor function since the beginning of the unemployment spell, specially from the 15th week to the 40th, like for the PBD graph.
+
+```{r}
+period_control = data %>%
+  filter(dur104 <= 104)%>%
+  filter(type=="control")
+
+fit_control = survfit(Surv(period_control$dur104, period_control$uncc)~period_control$after)
+
+plot(fit_control, col = c("blue", "red"), lwd = 2, main = "Survival Curves - Control")
+legend("topright", legend = c("before","after"), col = c("blue", "red"), lwd = 2)
+```
+
+Finally, for the control group there is no much difference in the survivor functions.
+
+## 5.1 KM estimates of the unemployment exit hazard
+
+Now, I can calculate the exit hazard rate with the previous estimates.I successfully fitted the smooth graph by estimating the hazard as:
+
+$\hat{\lambda}(t)=\frac{\hat{f}(t)}{\hat{S}(t)}$
+
+and using the locpoly function from the KernSmooth package.
+
+
+```{r, warning=FALSE, message=FALSE}
+
+library(survival)
+library(KernSmooth)
+
+pbd_before =fit_pbd[1]
+pbd_before = na.omit(pbd_before)
+snew = data.frame(time=pbd_before$time, surv=pbd_before$surv)
+snew$t_diff=c(NA, diff(snew$time,1))
+snew$hz = c(NA, (-diff(snew$surv)/diff(snew$time,1))/snew$surv[-1])
+snew$cum_hz=c(0,cumsum(snew$hz[-1]*snew$t_diff[-1]))
+
+# n_weeks = sum(period_pbd$after == 0)
+new.time=seq(from=0,to=103, by=1)
+
+pbd_before$time = sort(pbd_before$time) #order time increasingly
+i = findInterval(new.time, pbd_before$time)
+snew_grid = data.frame(time=pbd_before$time[i], surv=pbd_before$surv[i])
+snew_grid$t_diff = c(NA, diff(snew_grid$time, 1))
+snew_grid$hz=c(NA,-(diff(snew_grid$surv,1)/diff(snew_grid$time,1))/snew_grid$surv[-1])
+
+snew_grid$cum_hz = c(0,cumsum(snew_grid$hz[-1]*snew_grid$t_diff[-1]))
+
+plot(c(0,104),c(0,0.15),xlab="weeks",ylab="hazard", main="PBD, before",type="n")
+lines(snew_grid$time,snew_grid$hz)
+h2=locpoly(snew_grid$time[-1],snew_grid$hz[-1],degree=3,bandwidth = 3)
+lines(h2$x, h2$y, col="red")
+
+
+```
+
+Then, I replicate this process for all the groups and plotting them together (I had to extract the survivor functions before and after the policy and get the hazards for each, I don't know if there is a simpler way but I applied this for my implementation and worked well).
+```{r}
+
+library(survival)
+library(KernSmooth)
+
+pbd_after =fit_pbd[2]
+pbd_after = na.omit(pbd_after)
+
+new.time=seq(from=0,to=103, by=1)
+
+pbd_after$time = sort(pbd_after$time) #order time increasingly
+i = findInterval(new.time, pbd_after$time)
+snew_grid_af = data.frame(time=pbd_after$time[i], surv=pbd_after$surv[i])
+snew_grid_af$t_diff = c(NA, diff(snew_grid_af$time, 1))
+snew_grid_af$hz=c(NA,-(diff(snew_grid_af$surv,1)/diff(snew_grid_af$time,1))/snew_grid_af$surv[-1])
+
+
+h2_af=locpoly(snew_grid_af$time[-1],snew_grid_af$hz[-1],degree=3,bandwidth = 3)
+
+plot(c(0,104),c(0,0.15),xlab="weeks",ylab="hazard", main="PBD",type="n")
+lines(h2$x, h2$y, col="black")
+lines(h2_af$x, h2_af$y, col="red")
+legend("topright", legend = c("PBD before", "PBD after"), col = c("black", "red"), lty = 1, cex=1)
+
+```
+
+I got the same results as in the study in which the exit rate is higher (and sooner) before the implementation of the policy (black line), which are before the exhaustion of benefits (the spikes for the red line are also before the exhaustion of benefits).
+
+
+```{r}
+# separate KM estimates before and after the policy
+rr_before = fit_rr[1]
+rr_after =fit_rr[2]
+
+# omit na values
+rr_before = na.omit(rr_before)
+rr_after = na.omit(rr_after)
+
+# create date points
+new.time=seq(from=0,to=103, by=1)
+
+#order time increasingly
+rr_before$time = sort(rr_before$time) 
+rr_after$time = sort(rr_after$time)
+
+#find interval
+i = findInterval(new.time, rr_before$time)
+j = findInterval(new.time, rr_after$time)
+
+#create data frames for before and after the implementation of the policies
+snew_grid_rr_before = data.frame(time_before=rr_before$time[i], surv_before=rr_before$surv[i])
+snew_grid_rr_after = data.frame(time_after=rr_after$time[j], surv_after=rr_after$surv[j])
+
+#add columns for difference in periods for each dataframe
+snew_grid_rr_before$t_diff_before = c(NA, diff(snew_grid_rr_before$time_before, 1))
+snew_grid_rr_after$t_diff_after = c(NA, diff(snew_grid_rr_after$time_after, 1))
+
+# calculate hazard rates for each dataframe
+snew_grid_rr_before$hz_before=c(NA,-(diff(snew_grid_rr_before$surv_before,1)/diff(snew_grid_rr_before$time_before,1))/snew_grid_rr_before$surv_before[-1])
+snew_grid_rr_after$hz_after=c(NA,-(diff(snew_grid_rr_after$surv_after,1)/diff(snew_grid_rr_after$time_after,1))/snew_grid_rr_after$surv_after[-1])
+
+#omit NaN values
+snew_grid_rr_before$hz_before =  replace(snew_grid_rr_before$hz_before, is.nan(snew_grid_rr_before$hz_before), 0)
+
+#plot both dataframes into a single one
+plot(c(0,104),c(0,0.15),xlab="weeks",ylab="hazard", main="RR",type="n")
+
+# smooth the estimator
+h2_rr_before=locpoly(snew_grid_rr_before$time_before[-1],snew_grid_rr_before$hz_before[-1],degree=3,bandwidth = 3)
+h2_rr_after=locpoly(snew_grid_rr_after$time_after[-1],snew_grid_rr_after$hz_after[-1],degree=3,bandwidth = 3)
+
+# add the lines for each graph
+lines(h2_rr_before$x, h2_rr_before$y, col = c("black"))
+lines(h2_rr_after$x, h2_rr_after$y, col=c("red"))
+
+legend("topright", legend = c("RR before", "RR after"), col = c("black", "red"), lty = 1, cex=1)
+```
+
+The same occurs with the RR group in which there is a higher hazard for the old system.
+
+```{r}
+# separate KM estimates before and after the policy
+pbd_rr_before = fit_pbd_rr[1]
+pbd_rr_after = fit_pbd_rr[2]
+
+# omit na values
+pbd_rr_before = na.omit(pbd_rr_before)
+pbd_rr_after = na.omit(pbd_rr_after)
+
+# create date points
+new.time = seq(from = 0, to = 103, by = 1)
+
+# order time increasingly
+pbd_rr_before$time = sort(pbd_rr_before$time) 
+pbd_rr_after$time = sort(pbd_rr_after$time)
+
+# find interval
+i = findInterval(new.time, pbd_rr_before$time)
+j = findInterval(new.time, pbd_rr_after$time)
+
+# create data frames for before and after the implementation of the policies
+snew_grid_pbd_rr_before = data.frame(time_before = pbd_rr_before$time[i], surv_before = pbd_rr_before$surv[i])
+snew_grid_pbd_rr_after = data.frame(time_after = pbd_rr_after$time[j], surv_after = pbd_rr_after$surv[j])
+
+# add columns for difference in periods for each dataframe
+snew_grid_pbd_rr_before$t_diff_before = c(NA, diff(snew_grid_pbd_rr_before$time_before, 1))
+snew_grid_pbd_rr_after$t_diff_after = c(NA, diff(snew_grid_pbd_rr_after$time_after, 1))
+
+# calculate hazard rates for each dataframe
+snew_grid_pbd_rr_before$hz_before = c(NA, -(diff(snew_grid_pbd_rr_before$surv_before, 1) / diff(snew_grid_pbd_rr_before$time_before, 1)) / snew_grid_pbd_rr_before$surv_before[-1])
+snew_grid_pbd_rr_after$hz_after = c(NA, -(diff(snew_grid_pbd_rr_after$surv_after, 1) / diff(snew_grid_pbd_rr_after$time_after, 1)) / snew_grid_pbd_rr_after$surv_after[-1])
+
+# omit NaN values
+snew_grid_pbd_rr_before$hz_before = replace(snew_grid_pbd_rr_before$hz_before, is.nan(snew_grid_pbd_rr_before$hz_before), 0)
+
+# plot both dataframes into a single one
+plot(c(0, 104), c(0, 0.15), xlab = "weeks", ylab = "hazard", main = "PBD and RR", type = "n")
+
+# smooth the estimator
+h2_pbd_rr_before = locpoly(snew_grid_pbd_rr_before$time_before[-1], snew_grid_pbd_rr_before$hz_before[-1], degree = 3, bandwidth = 3)
+h2_pbd_rr_after = locpoly(snew_grid_pbd_rr_after$time_after[-1], snew_grid_pbd_rr_after$hz_after[-1], degree = 3, bandwidth = 3)
+
+# add the lines for each graph
+lines(h2_pbd_rr_before$x, h2_pbd_rr_before$y, col = c("black"))
+lines(h2_pbd_rr_after$x, h2_pbd_rr_after$y, col = c("red"))
+
+legend("topright", legend = c("PBD and RR before", "PBD and RR after"), col = c("black", "red"), lty = 1, cex=1)
+
+
+```
+
+We can see this effect to in the combined effects of groups where there is a higher exit rate for the old system, specially, before the exhaustion of benefits.
+
+```{r}
+# separate KM estimates before and after the policy
+control_before = fit_control[1]
+control_after = fit_control[2]
+
+# omit na values
+control_before = na.omit(control_before)
+control_after = na.omit(control_after)
+
+# create date points
+new.time = seq(from = 0, to = 103, by = 1)
+
+# order time increasingly
+control_before$time = sort(control_before$time) 
+control_after$time = sort(control_after$time)
+
+# find interval
+i = findInterval(new.time, control_before$time)
+j = findInterval(new.time, control_after$time)
+
+# create data frames for before and after the implementation of the policies
+snew_grid_control_before = data.frame(time_before = control_before$time[i], surv_before = control_before$surv[i])
+snew_grid_control_after = data.frame(time_after = control_after$time[j], surv_after = control_after$surv[j])
+
+# add columns for difference in periods for each dataframe
+snew_grid_control_before$t_diff_before = c(NA, diff(snew_grid_control_before$time_before, 1))
+snew_grid_control_after$t_diff_after = c(NA, diff(snew_grid_control_after$time_after, 1))
+
+# calculate hazard rates for each dataframe
+snew_grid_control_before$hz_before = c(NA, -(diff(snew_grid_control_before$surv_before, 1) / diff(snew_grid_control_before$time_before, 1)) / snew_grid_control_before$surv_before[-1])
+snew_grid_control_after$hz_after = c(NA, -(diff(snew_grid_control_after$surv_after, 1) / diff(snew_grid_control_after$time_after, 1)) / snew_grid_control_after$surv_after[-1])
+
+# omit NaN values
+snew_grid_control_before$hz_before = replace(snew_grid_control_before$hz_before, is.nan(snew_grid_control_before$hz_before), 0)
+
+# plot both dataframes into a single one
+plot(c(0, 104), c(0, 0.15), xlab = "weeks", ylab = "hazard", main = "Control", type = "n")
+
+# smooth the estimator
+h2_control_before = locpoly(snew_grid_control_before$time_before[-1], snew_grid_control_before$hz_before[-1], degree = 3, bandwidth = 3)
+h2_control_after = locpoly(snew_grid_control_after$time_after[-1], snew_grid_control_after$hz_after[-1], degree = 3, bandwidth = 3)
+
+# add the lines for each graph
+lines(h2_control_before$x, h2_control_before$y, col = c("black"))
+lines(h2_control_after$x, h2_control_after$y, col = c("red"))
+
+legend("topright", legend = c("Control before", "Control after"), col = c("black", "red"), lty = 1, cex=1)
+
+```
+
+Interestingly, we observe the same effect in the control group which is explain by the authors for the lower real GDP after the period of the implementation of the policy and a slight increase in the benefit level for this group.
+
+# 6. Estimating the causal treatment effect in a PH model
+
+Lastly, the PH model (${\lambda}_0(t) \exp(x'\beta)$ )
+ is estimated, where the baseline hazard is the object of interest.
+ 
+The piecewise constant function for changes every four weeks is specified as follows:
+
+${\lambda}_0(t) \exp\left(\sum_{l=i}^{14} \lambda_l I(4l < t < 4(l+1)) + \lambda_{15} I(t > 60)\right)$
+
+
+So, splitting the data as per usual in order to estimate the PWE PH model:
+```{r}
+data %>%
+  mutate(all = tr * (t39 + t52) ) ->
+  data
+
+breaks <- seq(from=3,to=59, by=4)
+labels <- paste("(", c(0,breaks), ",", c(breaks,104), "]",sep="")
+
+gux <- survSplit(Surv(dur104,uncc) ~., data=data, cut = breaks,
+                 end = "time", event="death", start="start", episode="interval")
+
+gux %>%
+  mutate(exposure = time - start,
+        interval=factor(interval+1, labels = labels) ) ->
+  gux
+```
+
+However, I couldn't get the same results. I took out the duration, exposure and time since I noticed these had a big impact in the estimates returning totally different results.
+
+```{r, warning=FALSE, message=FALSE}
+library(eha)
+
+#Define the model
+model_formula = death ~ interval+.-dur-exposure-time
+
+#Fit the model
+pwe <- glm(model_formula,
+           offset = log(exposure),
+           data = gux,
+           family = poisson)
+
+pwe
+```
+
+
+
+```{r, warning=FALSE, message=FALSE}
+library(stargazer)
+
+stargazer(pwe, 
+          dep.var.caption="",dep.var.labels="",
+          keep=1:15,
+          omit.table.layout = "n", star.cutoffs = NA,
+          keep.stat=c("n", "ll"),no.space=TRUE,
+          header=FALSE,
+          title="The PWE model", type="text"
+          )
+```
+
+So, by doing this, I got closer results.
+
+# Conclusion
+
+Due to unemployment insurance reforms across many countries, this study delves into the critical issue of how financial incentives within the system impact the duration of unemployment. It analyses the combined effects of changes in different unemployment insurance parameters, an area where previous research often lacked detail, making it difficult to isolate the relative impact of specific policy changes.
+
+From a policy perspective, the study suggests that potential benefit duration (PBD) emerges as a more effective tool than the level of benefits (RR) in influencing job search behavior and unemployment durations. This implies that policymakers might achieve better results by focusing on the overall duration of unemployment spells rather than just the duration of benefits. Additionally, the research emphasizes the need to consider behavioral effects and the relationship between different incentives and institutional settings when designing unemployment insurance policies.
+
+The replication of this study using survival analysis revealed that the new policies did not significantly reduce unemployment spells; in fact, they might even have extended them due to the potential disincentive to job search created by longer benefit durations. This reinforces the argument for focusing on measures that directly address unemployment duration itself rather than solely on the length of benefit periods.
+
+In conclusion, this study offers valuable insights into the intricate relationship between unemployment benefit parameters and job search behavior. By highlighting the importance of considering both the effects of individual parameters and their interactions, the research equips policymakers with the knowledge needed to design unemployment insurance systems that better balance social support with the goal of facilitating re-employment and reducing unemployment durations.
